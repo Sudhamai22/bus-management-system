@@ -275,7 +275,13 @@ export default function AdminDashboardPage() {
             <form className="admin-form" onSubmit={saveBus}>
               <input placeholder="Bus number" value={busForm.busNumber} onChange={(event) => setBusForm({ ...busForm, busNumber: event.target.value })} />
               <input placeholder="Bus name" value={busForm.busName} onChange={(event) => setBusForm({ ...busForm, busName: event.target.value })} />
-              <input placeholder="Bus type" value={busForm.busType} onChange={(event) => setBusForm({ ...busForm, busType: event.target.value })} />
+              <select value={busForm.busType} onChange={(event) => setBusForm({ ...busForm, busType: event.target.value })}>
+                <option value="">Select bus type</option>
+                <option value="SLEEPER_AC">Sleeper AC</option>
+                <option value="SLEEPER_NON_AC">Sleeper Non AC</option>
+                <option value="NORMAL_AC">Normal AC</option>
+                <option value="NORMAL_NON_AC">Normal Non AC</option>
+              </select>
               <input type="number" min="1" placeholder="Seat capacity" value={busForm.totalSeats} onChange={(event) => setBusForm({ ...busForm, totalSeats: event.target.value })} />
               <div className="form-row">
                 <button type="submit">{editingBusId ? "Update Bus" : "Add Bus"}</button>

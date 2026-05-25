@@ -1,53 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getMyBookings, cancelBooking, createBooking } from "../services/userApi";
-
-const BUS_CATALOG = [
-  {
-    id: "SB-101",
-    operator: "SmartLine Travels",
-    source: "Chennai",
-    destination: "Bangalore",
-    date: "2026-05-27",
-    time: "06:30",
-    arrival: "12:20",
-    fare: 799,
-    seatsAvailable: 28,
-  },
-  {
-    id: "SB-204",
-    operator: "Velocity Coach",
-    source: "Chennai",
-    destination: "Hyderabad",
-    date: "2026-05-27",
-    time: "21:15",
-    arrival: "06:30",
-    fare: 1299,
-    seatsAvailable: 18,
-  },
-  {
-    id: "SB-310",
-    operator: "GreenRoute Express",
-    source: "Bangalore",
-    destination: "Mysore",
-    date: "2026-05-28",
-    time: "09:00",
-    arrival: "12:00",
-    fare: 499,
-    seatsAvailable: 32,
-  },
-  {
-    id: "SB-415",
-    operator: "Metro Wings",
-    source: "Hyderabad",
-    destination: "Vijayawada",
-    date: "2026-05-29",
-    time: "18:40",
-    arrival: "00:15",
-    fare: 899,
-    seatsAvailable: 24,
-  },
-];
+import { getRoutes } from "../services/adminApi";
 
 export default function UserDashboardPage() {
   const { user, logout } = useAuth();
@@ -69,36 +23,81 @@ export default function UserDashboardPage() {
   });
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [bookings, setBookings] = useState([]);
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
+  const [availableBuses, setAvailableBuses] = useState([]);
   const selectedBus = useMemo(
-    () => BUS_CATALOG.find((bus) => bus.id === selectedBusId) || null,
-    [selectedBusId]
+    () => availableBuses.find((bus) => bus.id === selectedBusId) || null,
+    [selectedBusId, availableBuses]
   );
-
-  const availableBuses = useMemo(() => {
-    if (!searchDone) {
-      return [];
-    }
-
-    return BUS_CATALOG.filter((bus) => {
-      const sourceMatch = bus.source
-        .toLowerCase()
-        .includes(searchForm.source.trim().toLowerCase());
-      const destinationMatch = bus.destination
-        .toLowerCase()
-        .includes(searchForm.destination.trim().toLowerCase());
-      const dateMatch = searchForm.date ? bus.date === searchForm.date : true;
-      const timeMatch = searchForm.time ? bus.time >= searchForm.time : true;
-
-      return sourceMatch && destinationMatch && dateMatch && timeMatch;
-    });
-  }, [searchDone, searchForm]);
 
   const totalFare = selectedBus ? selectedBus.fare * selectedSeats.length : 0;
 
   function handleSearchChange(event) {
     const { name, value } = event.target;
-    setSearchForm((prev) => ({ ...prev, [name]: value }));
+    setSearchForm((prev) => {
+      const newForm = { ...prev, [name]: value };
+      // if both source and destination are set, do a quick search
+      if (newForm.source && newForm.destination) {
+        quickSearch(newForm);
+      }
+      return newForm;
+    });
+  }
+
+  function quickSearch(form) {
+    const src = form.source.trim().toLowerCase();
+    const dst = form.destination.trim().toLowerCase();
+    const date = form.date;
+    const time = form.time;
+
+    getRoutes()
+      .then((routes) => {
+        const results = (routes || [])
+          .map((r) => {
+            const bus = r.bus || {};
+            let routeDate = r.travelDate || "";
+            let depTime = "";
+            let arrTime = "";
+            if (!routeDate && r.departureTime) {
+              const d = new Date(r.departureTime);
+              routeDate = d.toISOString().slice(0, 10);
+              depTime = d.toTimeString().slice(0, 5);
+            } else if (r.departureTime) {
+              const d = new Date(r.departureTime);
+              depTime = d.toTimeString().slice(0, 5);
+            }
+            if (r.arrivalTime) {
+              const a = new Date(r.arrivalTime);
+              arrTime = a.toTimeString().slice(0, 5);
+            }
+
+            return {
+              id: r.routeId,
+              operator: bus.busName || bus.busNumber || "Operator",
+              source: r.source,
+              destination: r.destination,
+              date: routeDate,
+              time: depTime,
+              arrival: arrTime,
+              fare: r.fare,
+              seatsAvailable: bus.totalSeats || 0,
+              raw: r,
+            };
+          })
+          .filter((bus) => {
+            const sourceMatch = bus.source.toLowerCase().includes(src);
+            const destinationMatch = bus.destination.toLowerCase().includes(dst);
+            const dateMatch = date ? bus.date === date : true;
+            const timeMatch = time ? (bus.time || "") >= time : true;
+            return sourceMatch && destinationMatch && dateMatch && timeMatch;
+          });
+
+        setAvailableBuses(results);
+        setSearchDone(true);
+      })
+      .catch(() => setAvailableBuses([]));
   }
 
   function handleSearchSubmit(event) {
@@ -107,57 +106,121 @@ export default function UserDashboardPage() {
     setSelectedBusId("");
     setSelectedSeats([]);
     setPaymentSuccess(false);
-  }
+    // fetch routes from backend and map to available buses
+    const src = searchForm.source.trim().toLowerCase();
+    const dst = searchForm.destination.trim().toLowerCase();
+    const date = searchForm.date;
+    const time = searchForm.time;
 
-  function handleSelectBus(busId) {
-    setSelectedBusId(busId);
-    setSelectedSeats([]);
-    setPaymentSuccess(false);
-  }
+    getRoutes()
+      .then((routes) => {
+        const results = (routes || [])
+          .map((r) => {
+            const bus = r.bus || {};
+            // derive date/time from travelDate or departureTime
+            let routeDate = r.travelDate || "";
+            let depTime = "";
+            let arrTime = "";
+            if (!routeDate && r.departureTime) {
+              const d = new Date(r.departureTime);
+              routeDate = d.toISOString().slice(0, 10);
+              depTime = d.toTimeString().slice(0, 5);
+            } else if (r.departureTime) {
+              const d = new Date(r.departureTime);
+              depTime = d.toTimeString().slice(0, 5);
+            }
+            if (r.arrivalTime) {
+              const a = new Date(r.arrivalTime);
+              arrTime = a.toTimeString().slice(0, 5);
+            }
 
-  function toggleSeat(seatNo) {
-    setSelectedSeats((prev) => {
-      if (prev.includes(seatNo)) {
-        return prev.filter((seat) => seat !== seatNo);
-      }
+            return {
+              id: r.routeId,
+              operator: bus.busName || bus.busNumber || "Operator",
+              source: r.source,
+              destination: r.destination,
+              date: routeDate,
+              time: depTime,
+              arrival: arrTime,
+              fare: r.fare,
+              seatsAvailable: bus.totalSeats || 0,
+              raw: r,
+            };
+          })
+          .filter((bus) => {
+            const sourceMatch = bus.source.toLowerCase().includes(src);
+            const destinationMatch = bus.destination.toLowerCase().includes(dst);
+            const dateMatch = date ? bus.date === date : true;
+            const timeMatch = time ? (bus.time || "") >= time : true;
+            return sourceMatch && destinationMatch && dateMatch && timeMatch;
+          });
 
-      if (prev.length >= 6) {
-        return prev;
-      }
-
-      return [...prev, seatNo];
-    });
-  }
-
-  function handlePaymentChange(event) {
-    const { name, value } = event.target;
-    setPaymentData((prev) => ({ ...prev, [name]: value }));
-  }
-
-  function handlePayment(event) {
-    event.preventDefault();
-    // create booking on backend (simple payload)
-    if (!selectedBus) return;
-
-    const payload = {
-      busId: selectedBus.id,
-      seats: selectedSeats,
-      amount: totalFare,
-    };
-
-    createBooking(payload)
-      .then(() => {
-        setPaymentSuccess(true);
-        loadBookings();
+        setAvailableBuses(results);
       })
       .catch(() => {
-        setPaymentSuccess(false);
+        setAvailableBuses([]);
       });
+  }
+
+  async function handlePayment(event) {
+    event.preventDefault();
+    if (!selectedBus) return;
+    setPaymentError("");
+    // client-side validation
+    const cardDigits = String(paymentData.cardNumber).replace(/\D/g, "");
+    if (cardDigits.length !== 16) {
+      setPaymentError("Card number must be 16 digits.");
+      return;
+    }
+    if (!/^\d{2}\/\d{2}$/.test(paymentData.expiry)) {
+      setPaymentError("Expiry must be in MM/YY format.");
+      return;
+    }
+    if (!/^\d{3}$/.test(paymentData.cvv)) {
+      setPaymentError("CVV must be 3 digits.");
+      return;
+    }
+
+    const payload = {
+      route: { routeId: selectedBus.id },
+      seats: selectedSeats,
+      totalAmount: totalFare,
+      payment: {
+        cardHolder: paymentData.cardName,
+        cardNumber: cardDigits,
+        expiry: paymentData.expiry,
+      },
+    };
+
+    try {
+      setPaymentProcessing(true);
+      const res = await createBooking(payload);
+      setPaymentSuccess(true);
+      setPaymentData({ cardName: "", cardNumber: "", expiry: "", cvv: "" });
+      await loadBookings();
+    } catch (err) {
+      console.error("Payment error:", err);
+      setPaymentError(err?.response?.data?.message || err.message || "Payment failed");
+      setPaymentSuccess(false);
+    } finally {
+      setPaymentProcessing(false);
+    }
   }
 
   function loadBookings() {
     getMyBookings()
-      .then((data) => setBookings(data || []))
+      .then((data) => {
+        const items = (data || []).map((b) => ({
+          id: b.bookingId || b.id,
+          bus: b.route?.bus || null,
+          route: b.route || null,
+          seats: b.seats || [],
+          amount: b.totalAmount || b.amount || 0,
+          status: b.status || "",
+          createdAt: b.bookingDate || b.createdAt || b.date,
+        }));
+        setBookings(items);
+      })
       .catch(() => setBookings([]));
   }
 
@@ -235,6 +298,45 @@ export default function UserDashboardPage() {
             <button type="submit" className="primary-btn">
               Search Available Buses
             </button>
+            <button type="button" className="ghost-btn" onClick={() => {
+              // show all upcoming buses
+              getRoutes()
+                .then((routes) => {
+                  const results = (routes || []).map((r) => {
+                    const bus = r.bus || {};
+                    let routeDate = r.travelDate || "";
+                    let depTime = "";
+                    let arrTime = "";
+                    if (!routeDate && r.departureTime) {
+                      const d = new Date(r.departureTime);
+                      routeDate = d.toISOString().slice(0, 10);
+                      depTime = d.toTimeString().slice(0, 5);
+                    } else if (r.departureTime) {
+                      const d = new Date(r.departureTime);
+                      depTime = d.toTimeString().slice(0, 5);
+                    }
+                    if (r.arrivalTime) {
+                      const a = new Date(r.arrivalTime);
+                      arrTime = a.toTimeString().slice(0, 5);
+                    }
+                    return {
+                      id: r.routeId,
+                      operator: bus.busName || bus.busNumber || "Operator",
+                      source: r.source,
+                      destination: r.destination,
+                      date: routeDate,
+                      time: depTime,
+                      arrival: arrTime,
+                      fare: r.fare,
+                      seatsAvailable: bus.totalSeats || 0,
+                      raw: r,
+                    };
+                  });
+                  setAvailableBuses(results);
+                  setSearchDone(true);
+                })
+                .catch(() => setAvailableBuses([]));
+            }}>Show all upcoming buses</button>
           </form>
         </section>
 
@@ -325,12 +427,18 @@ export default function UserDashboardPage() {
                 id="cardNumber"
                 name="cardNumber"
                 type="text"
-                pattern="[0-9]{16}"
-                maxLength={16}
+                maxLength={19} /* 16 digits + 3 spaces when grouped */
                 value={paymentData.cardNumber}
                 onChange={handlePaymentChange}
                 required
               />
+              <div aria-live="polite">
+                {String(paymentData.cardNumber).replace(/\D/g, "").length === 16 ? (
+                  <small style={{ color: "#1f6a49", fontWeight: 700 }}>Card number valid</small>
+                ) : (
+                  <small style={{ color: "#b33939", fontWeight: 700 }}>Card number must be 16 digits</small>
+                )}
+              </div>
 
               <label htmlFor="expiry">Expiry (MM/YY)</label>
               <input
@@ -361,6 +469,8 @@ export default function UserDashboardPage() {
                 Pay Rs. {totalFare}
               </button>
             </form>
+
+            {paymentError ? <div className="admin-alert admin-alert-error" style={{ marginTop: 10 }}>{paymentError}</div> : null}
 
             {paymentSuccess ? (
               <div className="success-note" role="status" aria-live="polite">

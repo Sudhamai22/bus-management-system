@@ -39,6 +39,10 @@ public class AuthServiceImpl implements AuthService {
         User user = repo.findByEmail(req.getEmail())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        if (user.isBlocked()) {
+            throw new RuntimeException("User is blocked");
+        }
+
         if (!user.getPassword().equals(req.getPassword())) {
             throw new RuntimeException("Invalid password");
         }

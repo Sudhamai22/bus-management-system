@@ -5,6 +5,7 @@ import com.example.busbooking.enums.BookingStatus;
 import com.example.busbooking.repository.BookingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -12,6 +13,16 @@ public class BookingController {
 
     @Autowired
     private BookingRepository repo;
+
+    @GetMapping
+    public List<Booking> getAll() {
+        return repo.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public Booking getById(@PathVariable Long id) {
+        return repo.findById(id).orElseThrow(() -> new RuntimeException("Booking not found"));
+    }
 
     @PostMapping("/book")
     public Booking book(@RequestBody Booking booking) {

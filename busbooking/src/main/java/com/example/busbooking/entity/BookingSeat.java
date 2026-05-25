@@ -1,10 +1,8 @@
 package com.example.busbooking.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
 
 @Entity
-@Data
 public class BookingSeat {
 
     @Id
@@ -18,4 +16,28 @@ public class BookingSeat {
     @ManyToOne
     @JoinColumn(name = "seat_id")
     private Seat seat;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Booking getBooking() {
+        return booking;
+    }
+
+    public void setBooking(Booking booking) {
+        this.booking = booking;
+    }
+
+    public Seat getSeat() {
+        return seat;
+    }
+
+    public void setSeat(Seat seat) {
+        this.seat = seat;
+    }
 }

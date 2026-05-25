@@ -24,8 +24,7 @@ public class JwtFilter implements Filter {
             String token = header.substring(7);
 
             try {
-                String email = jwtUtil.extractEmail(token);
-                // Token valid (basic check)
+                jwtUtil.extractEmail(token);
             } catch (Exception e) {
                 throw new RuntimeException("Invalid JWT Token");
             }

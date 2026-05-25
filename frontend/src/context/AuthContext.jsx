@@ -117,7 +117,13 @@ export function AuthProvider({ children }) {
     setError("");
 
     try {
-      const data = await registerUser(formData);
+      const data = await registerUser({
+        fullName: formData.fullName || formData.name,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone,
+        role: formData.role,
+      });
       const nextToken = extractToken(data);
 
       if (!nextToken) {
